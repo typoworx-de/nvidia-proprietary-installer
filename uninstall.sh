@@ -1,7 +1,15 @@
 #!/bin/bash
 
 arch=$(uname -m);
-depotPath='/usr/src/nvidia-proprietary/depot';
+depotPath=$(dirname $0)"/depot/";
+
+
+force=0;
+if [[ $@ =~ '--force' ]];
+then
+  echo "Forced uninstall!";
+  force=1;
+fi
 
 counter=0;
 for package in $(find /usr/src/ -maxdepth 1 -type d -name 'nvidia*' -not -name 'nvidia-proprietary' | sort -nr);
@@ -11,13 +19,14 @@ do
   packageBasename=$(basename $package);
   packageVersion=${packageBasename/nvidia-/};
 
-  if [[ $counter == 1 ]];
+  if [[ $force == 0 && $counter == 1 ]];
   then
     echo -e "\e[93mSkipping current version: $packageVersion\e[0m";
     continue;
   fi
 
   depotFile="${depotPath}/NVIDIA-Linux-${arch}-${packageVersion}.run";
+
   if [[ ! -f "${depotFile}" ]];
   then
     echo -e "\e[31mNo proprietary package found matching ${packageVersion} (${depotFile})\e[0m";
