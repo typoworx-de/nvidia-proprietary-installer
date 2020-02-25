@@ -7,6 +7,12 @@ kernelMajorVersion=$(uname -r | grep -oE '^([0-9\.]{1})' | head -n 1);
 depotPath='/usr/src/nvidia-proprietary/depot';
 depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -nr | head -n 1)
 
+if [[ -z "${depotFile}" ]];
+then
+  echo -e "\e[31mNo NVIDIA-Driver binary release found in depot-directory!\e[0m";
+  exit 1;
+fi
+
 # switch gcc version
 if [[ -z "$gccVersion" ]];
 then
