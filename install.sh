@@ -17,14 +17,12 @@ if [[ ${kernelMajorVersion} -ge 5 ]];
 then
   echo -e "\e[34mLinux-Kernel seems to be 5.x Release\e[0m\n";
 
-  if [[ ${gccVersion} -le 9 ]];
+  if [[ ${gccVersion} -lt 9 ]];
   then
     echo -e "\e[31mCannot found gcc/g++ compiler version >= 9!\e[0m";
     echo -e "\e[33mPlease provide more recent gcc/g++ version if compilation fails!\e[0m\n";
   fi
 fi
-
-exit
 
 if [[ -x "/usr/bin/gcc-${gccVersion}" ]];
 then
