@@ -4,7 +4,7 @@ gccVersion='';
 arch=$(uname -m);
 kernelMajorVersion=$(uname -r | grep -oE '^([0-9\.]{1})' | head -n 1);
 
-depotPath='/usr/src/nvidia-proprietary/depot';
+depotPath=$(dirname $0)"/depot/";
 depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -nr | head -n 1)
 
 if [[ -z "${depotFile}" ]];
