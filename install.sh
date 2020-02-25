@@ -1,8 +1,36 @@
 #!/bin/bash
 
+gccVersion='';
 arch=$(uname -m);
+kernelMajorVersion=$(uname -r | grep -oE '^([0-9\.]{1})' | head -n 1);
+
 depotPath='/usr/src/nvidia-proprietary/depot';
 depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -nr | head -n 1)
+
+# switch gcc version
+if [[ -z "$gccVersion" ]];
+then
+  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -nr | head -n 1 | grep -oE "[0-9\.]+$");
+fi
+
+if [[ ${kernelMajorVersion} -ge 5 ]];
+then
+  echo -e "\e[34mLinux-Kernel seems to be 5.x Release\e[0m\n";
+
+  if [[ ${gccVersion} -le 9 ]];
+  then
+    echo -e "\e[31mCannot found gcc/g++ compiler version >= 9!\e[0m";
+    echo -e "\e[33mPlease provide more recent gcc/g++ version if compilation fails!\e[0m\n";
+  fi
+fi
+
+exit
+
+if [[ -x "/usr/bin/gcc-${gccVersion}" ]];
+then
+  update-alternatives --set gcc /usr/bin/gcc-${gccVersion}
+  update-alternatives --set g++ /usr/bin/g++-${gccVersion}
+fi
 
 echo -e "\e[34mInstalling from proprietary package: '$(basename $depotFile)'\e[0m";
 sh ${depotFile} -q -a -n -X -s --no-x-check --install-libglvnd --dkms --run-nvidia-xconfig && {
