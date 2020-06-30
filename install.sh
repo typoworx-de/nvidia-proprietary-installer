@@ -16,7 +16,7 @@ fi
 # switch gcc version
 if [[ -z "$gccVersion" ]];
 then
-  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -nr | head -n 1 | grep -oE "[0-9\.]+$");
+  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -r --version-sort | head -n 1 | grep -oE "[0-9\.]+$");
 fi
 
 if [[ ${kernelMajorVersion} -ge 5 ]];
