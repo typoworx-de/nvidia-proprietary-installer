@@ -1,11 +1,23 @@
 #!/bin/bash
 
+installerArgs='';
+
 gccVersion='';
 arch=$(uname -m);
 kernelMajorVersion=$(uname -r | grep -oE '^([0-9\.]{1})' | head -n 1);
 
 depotPath=$(dirname $0)"/depot/";
-depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -nr | head -n 1)
+depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -r --version-sort | head -n 1)
+
+installedDrivers=$(find /usr/src/ -maxdepth 1 -type d -name 'nvidia*' -not -name 'nvidia-proprietary' | wc -l);
+
+#if [[ $@ =~ " --no-sanity" ]];
+#then
+#  echo "Disabling sanity-check"
+#elif [[ ${installedDrivers} -ge 0 ]];
+#then
+#  installerArgs+=' --sanity';
+#fi
 
 if [[ -z "${depotFile}" ]];
 then
@@ -13,10 +25,27 @@ then
   exit 1;
 fi
 
+
+if [[ ! " $@ " = *" -q "* ]];
+then
+  echo
+  ls -t1 "${depotPath}";
+  echo
+
+  read -p "Start Update with Depot-File ${depotFile}? " -n 1 -r
+  echo    # (optional) move to a new line
+
+  if [[ ! $REPLY =~ ^[Yy]$ ]]
+  then
+    exit 1;
+  fi
+fi
+
+
 # switch gcc version
 if [[ -z "$gccVersion" ]];
 then
-  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -r --version-sort | head -n 1 | grep -oE "[0-9\.]+$");
+  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -nr | head -n 1 | grep -oE "[0-9\.]+$");
 fi
 
 if [[ ${kernelMajorVersion} -ge 5 ]];
@@ -27,17 +56,41 @@ then
   then
     echo -e "\e[31mCannot found gcc/g++ compiler version >= 9!\e[0m";
     echo -e "\e[33mPlease provide more recent gcc/g++ version if compilation fails!\e[0m\n";
+
+    echo "Try this:";
+    echo "sudo update-alternatives --install /usr/bin/gcc gcc $(which gcc-9) 5"
+    echo "sudo update-alternatives --install /usr/bin/g++ g++ $(which g++-9) 5";
+    echo "sudo update-alternatives --install /usr/bin/cpp cpp $(which cpp-9) 5)";
+    exit 1;
   fi
+
+  sudo update-alternatives --install /usr/bin/gcc gcc $(which gcc-9) 5;
+  sudo update-alternatives --install /usr/bin/g++ g++ $(which g++-9) 5;
 fi
 
 if [[ -x "/usr/bin/gcc-${gccVersion}" ]];
 then
-  update-alternatives --set gcc /usr/bin/gcc-${gccVersion}
-  update-alternatives --set g++ /usr/bin/g++-${gccVersion}
+  sudo update-alternatives --set gcc /usr/bin/gcc-${gccVersion} || echo "Failed setting gcc-${gccVersion} active!";
+  sudo update-alternatives --set g++ /usr/bin/g++-${gccVersion} || echo "Failed setting g++-${gccVersion} active!";
+  sudo update-alternatives --set cpp /usr/bin/cpp-${gccVersion} || echo "Failed setting cpp-${gccVersion} active!";
 fi
 
-echo -e "\e[34mInstalling from proprietary package: '$(basename $depotFile)'\e[0m";
-sh ${depotFile} -q -a -n -X -s --no-x-check --install-libglvnd --dkms --run-nvidia-xconfig && {
+
+echo -e "\e[34mInstalling from proprietary package: '$(basename ${depotFile})'\e[0m";
+
+# disabled installer args
+# --dkms
+
+sudo sh ${depotFile} \
+  -q -a -n -X -s \
+  ${installerArgs} \
+  --no-x-check \
+  --skip-module-unload \
+  --no-rpms \
+  --force-libglx-indirect --install-libglvnd \
+  --disable-nouveau \
+  --run-nvidia-xconfig && \
+{
   echo -e "\e[32mDone successfully\e[0m\n";
 } || {
   echo -e "\e[31mFailed with errors!\e[0m\n";
