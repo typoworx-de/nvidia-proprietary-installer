@@ -1,12 +1,32 @@
 #!/bin/bash
 
-installerArgs='';
+declare -a installerArgs=(
+  -X
+  --silent
+  --dkms
+  --no-precompiled-interface
+  --accept-license
+  --no-questions
+  --no-backup
+  --no-x-check
+  --no-questions
+  --skip-module-unload
+  --no-rpms
+  --glvnd-glx-client
+  --glvnd-egl-client
+  --force-libglx-indirect
+  --install-libglvnd
+  --disable-nouveau
+  --opengl-headers
+  --no-cc-version-check
+  --run-nvidia-xconfig
+);
 
 gccVersion='';
 arch=$(uname -m);
 kernelMajorVersion=$(uname -r | grep -oE '^([0-9\.]{1})' | head -n 1);
 
-depotPath=$(dirname $0)"/depot/";
+depotPath=$(realpath $(dirname $0)"/depot/");
 depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -r --version-sort | head -n 1)
 
 installedDrivers=$(find /usr/src/ -maxdepth 1 -type d -name 'nvidia*' -not -name 'nvidia-proprietary' | wc -l);
@@ -76,22 +96,32 @@ then
 fi
 
 
+function array_join { local IFS="$1"; shift; echo "$*"; }
+
 echo -e "\e[34mInstalling from proprietary package: '$(basename ${depotFile})'\e[0m";
 
 # disabled installer args
 # --dkms
+# --no-precompiled-interface
 
-sudo sh ${depotFile} \
-  -q -a -n -X -s \
-  ${installerArgs} \
-  --no-x-check \
-  --skip-module-unload \
-  --no-rpms \
-  --force-libglx-indirect --install-libglvnd \
-  --disable-nouveau \
-  --run-nvidia-xconfig && \
-{
+pwd=$(pwd);
+tmpPath=$(realpath $(dirname 0)/tmp);
+
+test -d "${tmpPath}" && rm -rf ${tmpPath}/* || mkdir "${tmpPath}";
+cd "${tmpPath}";
+
+depotDir=$(basename ${depotFile});
+depotDir=${depotDir/.run/};
+
+sudo sh ${depotFile} --extract-only || { echo "Error extracting depot-file!"; exit 1; }
+cd ${tmpPath}/${depotDir} || exit 1;
+
+sudo ${tmpPath}/${depotDir}/nvidia-installer $(array_join " " ${installerArgs[@]}) --dkms ${installerArgs} && {
   echo -e "\e[32mDone successfully\e[0m\n";
 } || {
-  echo -e "\e[31mFailed with errors!\e[0m\n";
+  sudo ${tmpPath}/${depotDir}/nvidia-installer $(array_join " " ${installerArgs[@]}) ${installerArgs} && {
+    echo -e "\e[32mDone successfully (without DKMS!)\e[0m\n";
+  } || {
+    echo -e "\e[31mFailed with errors (without DKMS)!\e[0m\n";
+  }
 }
