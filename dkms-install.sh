@@ -6,8 +6,10 @@ installerArgs='';
 gccVersion='';
 arch=$(uname -m);
 kernelMajorVersion=$(uname -r | grep -oE '^([0-9\.]{1})' | head -n 1);
+nvidiaCurrentVersion=$(which nvidia-smi > /dev/null && nvidia-smi | grep -ioE 'Driver Version: [0-9\.]+' | cut -d':' -f2- | xargs)
 
-depotPath=$(dirname $0)"/depot/";
+depotPath=$(dirname $0)"/depot";
+declare -a driverDepotFiles=($(cd "${depotPath}"; ls "NVIDIA-Linux-${arch}"*.run | sort -r --version-sort | head -n 6))
 depotFile=$(ls "${depotPath}/NVIDIA-Linux-${arch}"*.run | sort -r --version-sort | head -n 1)
 
 installedDrivers=$(find /usr/src/ -maxdepth 1 -type d -name 'nvidia*' -not -name 'nvidia-proprietary' | wc -l);
@@ -30,12 +32,42 @@ installerSource="${_pwd}/${installerBase}${installerVersion}"
 #  installerArgs+=' --sanity';
 #fi
 
+declare -i dialogW=$(($(tput cols)/2))
+declare -i dialogH=$(($(tput lines)/2))
+
+declare -a selectDriverMenu=()
+c=0;
+for i in "${driverDepotFiles[@]}";
+do
+  driverPackagingDate=$(exec sh "${depotPath}/$i" --info | grep -i 'Date of packaging' | cut -d':' -f2- | xargs);
+  selectDriverMenu+=($c "$i (${driverPackagingDate})");
+  c=$(($c+1));
+done
+selectDriverMenu+=(q "Exit")
+
+selectedDriver=$(dialog \
+  --clear --backtitle "NVIDIA Driver | Current NVIDIA-Driver: ${nvidiaCurrentVersion:-N/A}" --title "Select Driver" \
+  --menu "Choose one of the following options:" \
+  ${dialogH} ${dialogW} ${dialogH} \
+  "${selectDriverMenu[@]}"\
+  2>&1 >/dev/tty;
+);
+clear;
+
+[[ "${selectedDriver}" = "q" ]] || [[ -z "${driverDepotFiles[$selectedDriver]}" ]] && {
+  echo "You selected to quit!";
+  echo
+  exit 0;
+}
+
+depotFile="${depotPath}/${driverDepotFiles[$selectedDriver]}";
+
 if [[ ! -z "${latestKernelVersion}" ]];
 then
   # not working yet :-(
   #installerArgs+=" --kernel-name='${latestKernelVersion}' --kernel-source-path='/usr/src/linux-headers-${latestKernelVersion}'";
 
-  apt-get install -y "linux-headers-${latestKernelVersion}"
+  sudo apt-get install -y "linux-headers-${latestKernelVersion}"
 fi
 
 if [[ -z "${depotFile}" ]];
@@ -45,35 +77,33 @@ then
 fi
 
 
-if [[ ! " $@ " = *" -q "* ]];
-then
-  echo
-  ls -t1 "${depotPath}";
-  echo
-
-  read -p "Start Update with Depot-File ${depotFile}? " -n 1 -r
-  echo    # (optional) move to a new line
-
-  if [[ ! $REPLY =~ ^[Yy]$ ]]
-  then
-    exit 1;
-  fi
-fi
+#if [[ ! " $@ " = *" -q "* ]];
+#then
+#  echo;
+#  echo;
+#  read -p "Start Update with Depot-File ${depotFile}? " -n 1 -r
+#  echo
+#
+#  if [[ ! $REPLY =~ ^[Yy]$ ]]
+#  then
+#    exit 1;
+#  fi
+#fi
 
 
 # switch gcc version
 if [[ -z "$gccVersion" ]];
 then
-  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -n | head -n 1 | grep -oE "[0-9\.]+$");
+  gccVersion=$(find /usr/bin/ -maxdepth 1 -regex '.+\/gcc-[0-9\.]+' | sort -nr | head -n 1 | grep -oE "[0-9\.]+$");
 fi
 
 if [[ ${gccVersion} -lt 11 ]];
 then
   kernelVersion=$(uname -r)
 
-  [[ $(grep -c 'CONFIG_SLS=y' /usr/src/linux-headers-${kernelVersion}/.config) -eq 0 ]] || {
-    echo "Patching Kernel-Config: disable CONFIG_SLS=y";
-    sudo sed -i~nvidia -E 's/^(CONFIG_CC_HAS_SLS=y|CONFIG_SLS=y)$/#\1/' /usr/src/linux-headers-${kernelVersion}/.config
+  [[ $(grep -Ec '#{0}CONFIG_CC_HAS_SLS=y' /usr/src/linux-headers-${kernelVersion}/.config) -eq 0 ]] || {
+    echo "Patching Kernel-Config: disable CONFIG_CC_HAS_SLS=y";
+    sudo sed -ri~nvidia -E 's/^\#{0}(CONFIG_CC_HAS_SLS=y)$/\#\1/' /usr/src/linux-headers-${kernelVersion}/.config
   }
 fi
 
@@ -85,14 +115,11 @@ then
 
   for compiler in gcc cpp g++;
   do
-    [ $(update-alternatives --list ${compiler} | grep -c "${compiler}-${gccVersion}") -eq 0 ] && {
-      update-alternatives --install /usr/bin/${compiler} ${compiler} $(which ${compiler}-${gccVersion}) ${gccVersion};
+    [ $(update-alternatives --list ${compiler} | grep -c "${compiler}-${gccVersion}") -eq 0 ] || {
+      sudo update-alternatives --install /usr/bin/${compiler} ${compiler} $(which ${compiler}-${gccVersion}) ${gccVersion}
     }
 
-    update-alternatives --set ${compiler} /usr/bin/${compiler}-${gccVersion} || {
-      echo "Error: Missing ${compiler}-${gccVersion}!";
-      exit 1;
-    }
+    sudo update-alternatives --set ${compiler} /usr/bin/${compiler}-${gccVersion} || exit 1
   done
 fi
 
@@ -107,12 +134,27 @@ installer=${depotFile}
   installer="${installerSource}/nvidia-installer";
 }
 
-#sudo sh ${installer} \
+chmod +x ${installer};
+
+#echo "Uninstalling previous driver's (if existing)";
+#installerSourceDir=$(basename ${installer})
+#installerSourceDir=${installerSourceDir/.run/}
+
+#[ -d "${installerSourceDir}" ] || \
+#  sudo ${installer} -a -q -s -x || exit $?;
+
+#sudo ${installer} -a -q -s --uninstall;
+
+#sudo service lightdm stop || true
+
+#sudo modprobe -rf nvidia nvidia_drm nvidia_modeset || true
+
+#sudo ${installer} \
 #  -q -a -n -X -s \
 #  ${installerArgs} \
 #  --no-x-check \
-#  --skip-module-unload \
 #  --no-rpms \
+#  --skip-module-unload \
 #  --force-libglx-indirect --install-libglvnd \
 #  --disable-nouveau \
 #  --run-nvidia-xconfig && \
@@ -122,11 +164,14 @@ installer=${depotFile}
 #  echo -e "\e[31mFailed with errors!\e[0m\n";
 #}
 
-echo "Installing NVIDIA DKMS from ${installerSource} ..."
-sudo dkms add ${installerSource}/kernel -m nvidia -v ${installerVersion} || true
+echo "Installing NVIDIA DKMS ..."
+sudo dkms add ${installerSource}/kernel -m nvidia -v ${installerVersion} || {
+  sudo dkms build ${installerSource}/kernel -m nvidia -v ${installerVersion} || true
+}
 sudo dkms install ${installerSource}/kernel -m nvidia -v ${installerVersion} || true
+
 
 [ -d "${installerSource}" ] && {
   echo "Pruning ${installerSource}"
-  echo rm -rf "${installerSource}";
+  rm -rf "${installerSource}";
 }

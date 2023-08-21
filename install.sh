@@ -101,9 +101,9 @@ if [[ ${gccVersion} -lt 11 ]];
 then
   kernelVersion=$(uname -r)
 
-  [[ $(grep '' /usr/src/linux-headers-${kernelVersion}/.config) -eq 0 ]] || {
+  [[ $(grep -Ec '#{0}CONFIG_CC_HAS_SLS=y' /usr/src/linux-headers-${kernelVersion}/.config) -eq 0 ]] || {
     echo "Patching Kernel-Config: disable CONFIG_CC_HAS_SLS=y";
-    sudo sed --silent -i~nvidia -E 's/^(CONFIG_CC_HAS_SLS=y)$/#\1/' /usr/src/linux-headers-${kernelVersion}/.config
+    sudo sed -ri~nvidia -E 's/^\#{0}(CONFIG_CC_HAS_SLS=y)$/\#\1/' /usr/src/linux-headers-${kernelVersion}/.config
   }
 fi
 
@@ -165,7 +165,9 @@ sudo ${installer} \
 }
 
 echo "Installing NVIDIA DKMS ..."
-sudo dkms add ${installerSource}/kernel -m nvidia -v ${installerVersion} || true
+sudo dkms add ${installerSource}/kernel -m nvidia -v ${installerVersion} || {
+  sudo dkms build ${installerSource}/kernel -m nvidia -v ${installerVersion} || true
+}
 sudo dkms install ${installerSource}/kernel -m nvidia -v ${installerVersion} || true
 
 
